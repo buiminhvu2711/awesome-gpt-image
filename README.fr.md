@@ -6,6 +6,7 @@ Dernière mise à jour 260424 03:26:42 UTC
 
 [![Awesome](https://awesome.re/badge.svg)](https://awesome.re)
 [![Stars](https://img.shields.io/github/stars/ZeroLu/awesome-gpt-image?style=flat-square)](https://github.com/ZeroLu/awesome-gpt-image/stargazers)
+[![AtomGitStars](https://atomgit.com/ZeroLuAtom/awesome-gpt-image/star/badge.svg)](https://atomgit.com/ZeroLuAtom/awesome-gpt-image)
 
 Languages: [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Español](README.es.md)
 
