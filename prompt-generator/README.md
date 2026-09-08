@@ -2,7 +2,7 @@
 
 Trang web sinh prompt GPT Image 2: nhập ý tưởng (tiếng Việt) → nhận prompt tiếng Anh hoàn chỉnh, sinh bằng Cline API.
 
-> ⚠️ **Tool chạy local** — repo chứa file `.env` có API key thật, chỉ dùng trên máy cá nhân, **không public repo này**.
+> 🔒 Chạy local — `.env` không được commit (đã bị `.gitignore`). Tool gen hình ảnh qua OpenAI Image API.
 
 ## Chạy
 
@@ -16,11 +16,15 @@ node prompt-generator/server.mjs
 | Biến | Mặc định | Mô tả |
 |---|---|---|
 | `CLINE_API_KEY` | — | API key của Cline (**bắt buộc** khi dùng proxy) |
-| `CLINE_MODEL` | `anthropic/claude-sonnet-4.6` | Model sinh prompt (danh sách: `GET https://api.cline.bot/api/v1/models`) |
+| `CLINE_MODEL` | `cline-pass/kimi-k3` | Model sinh prompt (ClinePass dùng tiền tố `cline-pass/...`) |
+| `OPENAI_API_KEY` | — | API key OpenAI (cho nút 🖼️ Gen hình; chấp nhận cả tên `OPEN_AI_API_KEY`) |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Model gen ảnh của OpenAI |
+| `OPENAI_IMAGE_SIZE` | `1024x1024` | Kích thước ảnh (`1024x1024`, `1024x1536`, `1536x1024`) |
 | `PORT` | `3000` | Port của proxy local |
 
-- ⚠️ Model id dùng dấu **chấm**: `anthropic/claude-sonnet-4.6` (không phải `-4-6` như một số tài liệu cũ). Nếu sai sẽ nhận lỗi `404 model not found`.
-- Tài khoản Cline cần có **credit dương** — nếu âm sẽ nhận lỗi `402 Insufficient balance` (nạp tại [app.cline.bot](https://app.cline.bot)).
+- Model id ClinePass: xem danh sách tại `GET https://api.cline.bot/api/v1/models`. Sai sẽ nhận `404 model not found`.
+- ClinePass đo usage theo 3 cửa sổ: 5 giờ / tuần / tháng (xem tại app.cline.bot dashboard).
+- Nút 🖼️ Gen hình gọi OpenAI Image API (`POST /v1/images/generations`, model `gpt-image-2`, trả về b64_json) — cần tài khoản OpenAI có credit, thời gian gen 30-90s.
 
 - Server tự nạp `.env` bằng `process.loadEnvFile()` (Node ≥ 20.6), không cần cài dotenv. Biến môi trường hệ thống vẫn được ưu tiên nếu đã đặt.
 

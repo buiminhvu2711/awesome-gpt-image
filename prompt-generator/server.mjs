@@ -16,6 +16,7 @@ try {
 
 const PORT = process.env.PORT || 3000;
 const CLINE_API_KEY = process.env.CLINE_API_KEY || "";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY || "";
 const MODEL = process.env.CLINE_MODEL || "anthropic/claude-sonnet-4.6";
 
 // Trích các prompt mẫu từ README.md làm few-shot examples cho model
@@ -116,6 +117,59 @@ const server = createServer(async (req, res) => {
     } catch (err) {
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Không kết nối được Cline API: " + err.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/image") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let prompt = "";
+    try { prompt = JSON.parse(body).prompt?.slice(0, 4000) || ""; } catch {}
+
+    if (!prompt.trim()) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Thiếu prompt." }));
+    }
+    if (!OPENAI_API_KEY) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Chưa đặt OPENAI_API_KEY trong .env." }));
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+          prompt,
+          size: process.env.OPENAI_IMAGE_SIZE || "1024x1024",
+          n: 1,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        res.writeHead(response.status, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({
+          error: data.error?.message || `OpenAI API lỗi ${response.status}`,
+          status: response.status,
+        }));
+      }
+      const b64 = data.data?.[0]?.b64_json || data.data?.[0]?.url || "";
+      if (!b64) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "OpenAI không trả về ảnh." }));
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        image: b64.startsWith("http") ? b64 : `data:image/png;base64,${b64}`,
+      }));
+    } catch (err) {
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Không kết nối được OpenAI API: " + err.message }));
     }
     return;
   }

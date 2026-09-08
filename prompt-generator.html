@@ -34,6 +34,9 @@
   .chip { font-size: .78rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
   .chip:hover { color: var(--accent); border-color: var(--accent); }
   .typing { display: inline-flex; gap: 4px; padding: 6px 0; }
+  .imgbox { display: flex; flex-direction: column; gap: 8px; }
+  .imgbox img { max-width: 100%; border-radius: 12px; border: 1px solid var(--border); }
+  a.btn { text-decoration: none; display: inline-block; }
   .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
   .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
   @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
@@ -116,6 +119,34 @@
     return data.prompt;
   }
 
+  async function genImage(prompt, btn, msgDiv) {
+    btn.disabled = true;
+    btn.textContent = "⏳ Đang vẽ... (30-90s)";
+    const imgBox = document.createElement("div");
+    imgBox.className = "imgbox";
+    imgBox.innerHTML = `<span class="typing"><i></i><i></i><i></i></span>`;
+    msgDiv.appendChild(imgBox);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `Lỗi ${res.status}`);
+      imgBox.innerHTML = `<img src="${data.image}" alt="Generated" /><div class="actions"><a class="btn" href="${data.image}" download="gpt-image.png" target="_blank">💾 Tải ảnh</a></div>`;
+    } catch (e) {
+      imgBox.innerHTML = `<div class="bubble" style="color:#ff8a8a">❌ ${e.message}</div>`;
+      btn.disabled = false;
+      btn.textContent = "🖼️ Thử lại";
+      return;
+    }
+    btn.disabled = false;
+    btn.textContent = "🖼️ Gen lại";
+  }
+
   form.onsubmit = async (e) => {
     e.preventDefault();
     const text = input.value.trim();
@@ -133,13 +164,14 @@
       typing.querySelector(".bubble").textContent = prompt;
       const actions = document.createElement("div");
       actions.className = "actions";
-      actions.innerHTML = `<button class="btn copy">📋 Copy</button>`;
+      actions.innerHTML = `<button class="btn copy">📋 Copy</button><button class="btn genimg">🖼️ Gen hình</button>`;
       const copyBtn = actions.querySelector(".copy");
       copyBtn.onclick = () => {
         navigator.clipboard.writeText(prompt);
         copyBtn.textContent = "✅ Đã copy!";
         setTimeout(() => (copyBtn.textContent = "📋 Copy"), 1500);
       };
+      actions.querySelector(".genimg").onclick = (e) => genImage(prompt, e.target, typing);
       typing.appendChild(actions);
     } catch (e) {
       typing.querySelector(".bubble").textContent = "❌ " + (e.message || e);
