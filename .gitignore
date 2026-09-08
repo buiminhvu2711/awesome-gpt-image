@@ -2,8 +2,8 @@
 .DS_Store
 Thumbs.db
 
-# Secrets
-.env
+# Secrets — repo này chỉ chạy local nên .env được commit luôn
+# .env
 
 # Editor files
 .vscode/

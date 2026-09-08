@@ -46,8 +46,7 @@
   <p>Nhập ý tưởng bằng tiếng Việt → nhận prompt tiếng Anh hoàn chỉnh (qua Cline API)</p>
 </header>
 <div class="keybar">
-  <input type="password" id="apiKey" placeholder="Dán Cline API Key của bạn (sk-...)" />
-  <span class="status" id="keyStatus"></span>
+  <span class="status" id="proxyStatus">🔍 Đang kiểm tra proxy local...</span>
 </div>
 <main id="chat"></main>
 <div class="examples" id="examples"></div>
@@ -56,30 +55,15 @@
   <button class="send" id="sendBtn">Gửi</button>
 </form>
 <div class="hint">
-  Key chỉ lưu trong trình duyệt của bạn (localStorage) và chỉ gửi tới <code>api.cline.bot</code>.
-  Nếu bị CORS chặn, chạy proxy local: <code>CLINE_API_KEY="sk-..." node prompt-generator/server.mjs</code>
+  Tool chạy local — key và model cấu hình trong file <code>.env</code> ở root repo, server proxy đọc tự động.
+  Chạy: <code>node prompt-generator/server.mjs</code> rồi mở <code>http://localhost:PORT</code>.
 </div>
 <script>
   const chat = document.getElementById("chat");
   const form = document.getElementById("form");
   const input = document.getElementById("input");
   const sendBtn = document.getElementById("sendBtn");
-  const keyInput = document.getElementById("apiKey");
-  const keyStatus = document.getElementById("keyStatus");
-
-  const MODEL = "anthropic/claude-sonnet-4.6";
-  const SYSTEM_PROMPT = `You are an expert prompt engineer for OpenAI's GPT Image 2 image generation model.
-
-The user will describe what image they want (in Vietnamese or any language). Your job is to return ONE final, ready-to-use image prompt in ENGLISH.
-
-Rules for the prompt you produce:
-- Write as a descriptive instruction paragraph, not a list of keywords.
-- Be specific: subject, action, composition, camera/lens, lighting, color palette, mood, environment details, textures.
-- If text appears in the image, put the exact text in double quotes.
-- Match the aesthetic style the user asks for (photorealistic RAW photo, cinematic, illustration, poster design, etc.). For photorealism, mention realistic imperfections and natural lighting.
-- Keep it between 60 and 200 words. Do not add headings, explanations, or anything besides the prompt itself.
-
-Output format: return ONLY the final prompt text. No preamble, no quotes around the whole thing, no markdown.`;
+  const proxyStatus = document.getElementById("proxyStatus");
 
   const EXAMPLES = [
     "Ảnh chụp RAW bằng iPhone: ga tàu điện ngầm lúc đêm khuya, chuyển động mờ",
@@ -90,13 +74,17 @@ Output format: return ONLY the final prompt text. No preamble, no quotes around 
   document.getElementById("examples").innerHTML = EXAMPLES.map(t => `<span class="chip">${t}</span>`).join("");
   document.querySelectorAll(".chip").forEach(c => c.onclick = () => { input.value = c.textContent; input.focus(); });
 
-  // Key handling: only needed when calling the API directly (no local proxy)
-  keyInput.value = localStorage.getItem("cline_api_key") || "";
-  updateKeyStatus();
-  keyInput.oninput = () => { localStorage.setItem("cline_api_key", keyInput.value.trim()); updateKeyStatus(); };
-  function updateKeyStatus() {
-    keyStatus.textContent = keyInput.value.trim() ? "🔑 Đã lưu key" : "Cần key nếu không dùng proxy local";
-  }
+  // Kiểm tra proxy local có chạy không
+  fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+    .then((r) => r.json())
+    .then((d) => {
+      proxyStatus.textContent = d.error?.includes("CLINE_API_KEY")
+        ? "⚠️ Proxy chạy rồi nhưng server thiếu CLINE_API_KEY trong .env"
+        : "🟢 Proxy local đã sẵn sàng";
+    })
+    .catch(() => {
+      proxyStatus.textContent = "🔴 Chưa thấy proxy — chạy: node prompt-generator/server.mjs";
+    });
 
   function addMsg(role, text) {
     const div = document.createElement("div");
@@ -123,32 +111,9 @@ Output format: return ONLY the final prompt text. No preamble, no quotes around 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text }),
     });
-    if (!res.ok && res.status !== 404) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Proxy lỗi ${res.status}`);
-    }
-    if (res.ok) return (await res.json()).prompt;
-    return null; // no proxy available (e.g. GitHub Pages)
-  }
-
-  async function callDirect(text) {
-    const key = keyInput.value.trim();
-    if (!key) throw new Error("Chưa có API key. Hãy dán key ở trên hoặc chạy proxy local (xem gợi ý dưới trang).");
-    const res = await fetch("https://api.cline.bot/api/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        stream: false,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Yêu cầu ảnh của tôi: ${text}` },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || `Cline API lỗi ${res.status}`);
-    return data.choices[0].message.content.trim();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Proxy lỗi ${res.status}`);
+    return data.prompt;
   }
 
   form.onsubmit = async (e) => {
@@ -164,9 +129,7 @@ Output format: return ONLY the final prompt text. No preamble, no quotes around 
     sendBtn.disabled = true;
 
     try {
-      let prompt = null, err = null;
-      try { prompt = await callProxy(text); } catch (e) { err = e; }
-      if (prompt === null) prompt = await callDirect(text);
+      const prompt = await callProxy(text);
       typing.querySelector(".bubble").textContent = prompt;
       const actions = document.createElement("div");
       actions.className = "actions";
