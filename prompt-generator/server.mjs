@@ -76,8 +76,15 @@ const server = createServer(async (req, res) => {
           status: response.status,
         }));
       }
+      // Response shape có thể là {choices:[...]} hoặc {data:{choices:[...]}} tuỳ model
+      const choice = data.choices?.[0] || data.data?.choices?.[0];
+      const prompt = (choice?.message?.content || "").trim();
+      if (!prompt) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Response rỗng hoặc sai định dạng từ Cline API" }));
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ prompt: data.choices[0].message.content.trim() }));
+      res.end(JSON.stringify({ prompt }));
     } catch (err) {
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Không kết nối được Cline API: " + err.message }));
