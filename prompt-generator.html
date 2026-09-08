@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GPT Image 2 · Prompt Generator</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1d27; --border:#2a2e3d; --accent:#7c6cf6; --text:#e8eaf2; --muted:#9aa0b5; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--border); text-align: center; }
+  header h1 { font-size: 1.3rem; }
+  header h1 span { color: var(--accent); }
+  header p { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .keybar { display: flex; gap: 8px; justify-content: center; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .keybar input { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: .85rem; width: 320px; }
+  .keybar .status { font-size: .78rem; color: var(--muted); }
+  main { flex: 1; width: 100%; max-width: 820px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+  .msg { display: flex; flex-direction: column; gap: 8px; }
+  .msg .who { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .bubble { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; font-size: .95rem; }
+  .msg.user .bubble { align-self: flex-end; background: #2b2650; border-color: #4a3f8f; max-width: 85%; }
+  .msg.ai .bubble { background: #161923; }
+  .msg .actions { display: flex; gap: 8px; }
+  .btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 12px; font-size: .8rem; cursor: pointer; transition: all .15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  form { display: flex; gap: 10px; padding: 16px; border-top: 1px solid var(--border); background: var(--bg); }
+  input#input { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px 16px; color: var(--text); font-size: .95rem; outline: none; }
+  input#input:focus { border-color: var(--accent); }
+  button.send { background: var(--accent); border: none; color: #fff; border-radius: 10px; padding: 0 22px; font-size: .95rem; cursor: pointer; }
+  button.send:disabled { opacity: .5; cursor: wait; }
+  .hint { color: var(--muted); font-size: .8rem; padding: 0 16px 12px; text-align: center; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding-bottom: 4px; }
+  .chip { font-size: .78rem; color: var(--muted); border: 1px dashed var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .chip:hover { color: var(--accent); border-color: var(--accent); }
+  .typing { display: inline-flex; gap: 4px; padding: 6px 0; }
+  .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 <span>GPT Image 2</span> Prompt Generator</h1>
+  <p>Nhập ý tưởng bằng tiếng Việt → nhận prompt tiếng Anh hoàn chỉnh (qua Cline API)</p>
+</header>
+<div class="keybar">
+  <input type="password" id="apiKey" placeholder="Dán Cline API Key của bạn (sk-...)" />
+  <span class="status" id="keyStatus"></span>
+</div>
+<main id="chat"></main>
+<div class="examples" id="examples"></div>
+<form id="form">
+  <input id="input" placeholder="VD: một chú mèo phi hành gia ngồi uống cà phê ngoài sao Hỏa, ảnh chụp RAW..." autocomplete="off" />
+  <button class="send" id="sendBtn">Gửi</button>
+</form>
+<div class="hint">
+  Key chỉ lưu trong trình duyệt của bạn (localStorage) và chỉ gửi tới <code>api.cline.bot</code>.
+  Nếu bị CORS chặn, chạy proxy local: <code>CLINE_API_KEY="sk-..." node prompt-generator/server.mjs</code>
+</div>
+<script>
+  const chat = document.getElementById("chat");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("sendBtn");
+  const keyInput = document.getElementById("apiKey");
+  const keyStatus = document.getElementById("keyStatus");
+
+  const MODEL = "anthropic/claude-sonnet-4.6";
+  const SYSTEM_PROMPT = `You are an expert prompt engineer for OpenAI's GPT Image 2 image generation model.
+
+The user will describe what image they want (in Vietnamese or any language). Your job is to return ONE final, ready-to-use image prompt in ENGLISH.
+
+Rules for the prompt you produce:
+- Write as a descriptive instruction paragraph, not a list of keywords.
+- Be specific: subject, action, composition, camera/lens, lighting, color palette, mood, environment details, textures.
+- If text appears in the image, put the exact text in double quotes.
+- Match the aesthetic style the user asks for (photorealistic RAW photo, cinematic, illustration, poster design, etc.). For photorealism, mention realistic imperfections and natural lighting.
+- Keep it between 60 and 200 words. Do not add headings, explanations, or anything besides the prompt itself.
+
+Output format: return ONLY the final prompt text. No preamble, no quotes around the whole thing, no markdown.`;
+
+  const EXAMPLES = [
+    "Ảnh chụp RAW bằng iPhone: ga tàu điện ngầm lúc đêm khuya, chuyển động mờ",
+    "Poster chữ 3D 'SALE 50%' màu vàng neon trên nền tím",
+    "Chân dung cô gái Việt trong áo dài dưới ánh đèn neon Sài Gòn",
+    "Infographic cách pha cà phê pour-over, phong cách tối giản"
+  ];
+  document.getElementById("examples").innerHTML = EXAMPLES.map(t => `<span class="chip">${t}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { input.value = c.textContent; input.focus(); });
+
+  // Key handling: only needed when calling the API directly (no local proxy)
+  keyInput.value = localStorage.getItem("cline_api_key") || "";
+  updateKeyStatus();
+  keyInput.oninput = () => { localStorage.setItem("cline_api_key", keyInput.value.trim()); updateKeyStatus(); };
+  function updateKeyStatus() {
+    keyStatus.textContent = keyInput.value.trim() ? "🔑 Đã lưu key" : "Cần key nếu không dùng proxy local";
+  }
+
+  function addMsg(role, text) {
+    const div = document.createElement("div");
+    div.className = `msg ${role}`;
+    div.innerHTML = `<div class="who">${role === "user" ? "🧑 Bạn" : "🤖 Prompt"}</div>
+      <div class="bubble"></div>
+      ${role === "ai" ? `<div class="actions"><button class="btn copy">📋 Copy</button></div>` : ""}`;
+    div.querySelector(".bubble").textContent = text;
+    if (role === "ai") {
+      div.querySelector(".copy").onclick = (e) => {
+        navigator.clipboard.writeText(text);
+        e.target.textContent = "✅ Đã copy!";
+        setTimeout(() => (e.target.textContent = "📋 Copy"), 1500);
+      };
+    }
+    chat.appendChild(div);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    return div;
+  }
+
+  async function callProxy(text) {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    if (!res.ok && res.status !== 404) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Proxy lỗi ${res.status}`);
+    }
+    if (res.ok) return (await res.json()).prompt;
+    return null; // no proxy available (e.g. GitHub Pages)
+  }
+
+  async function callDirect(text) {
+    const key = keyInput.value.trim();
+    if (!key) throw new Error("Chưa có API key. Hãy dán key ở trên hoặc chạy proxy local (xem gợi ý dưới trang).");
+    const res = await fetch("https://api.cline.bot/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        stream: false,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `Yêu cầu ảnh của tôi: ${text}` },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || `Cline API lỗi ${res.status}`);
+    return data.choices[0].message.content.trim();
+  }
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    addMsg("user", text);
+
+    const typing = addMsg("ai", "");
+    typing.querySelector(".bubble").innerHTML = `<span class="typing"><i></i><i></i><i></i></span>`;
+    typing.querySelector(".actions")?.remove();
+    sendBtn.disabled = true;
+
+    try {
+      let prompt = null, err = null;
+      try { prompt = await callProxy(text); } catch (e) { err = e; }
+      if (prompt === null) prompt = await callDirect(text);
+      typing.querySelector(".bubble").textContent = prompt;
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.innerHTML = `<button class="btn copy">📋 Copy</button>`;
+      const copyBtn = actions.querySelector(".copy");
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(prompt);
+        copyBtn.textContent = "✅ Đã copy!";
+        setTimeout(() => (copyBtn.textContent = "📋 Copy"), 1500);
+      };
+      typing.appendChild(actions);
+    } catch (e) {
+      typing.querySelector(".bubble").textContent = "❌ " + (e.message || e);
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    }
+  };
+</script>
+</body>
+</html>
+

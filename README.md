@@ -25,6 +25,8 @@ GPT Image 2 represents a significant upgrade from version 1.5, offering:
 
 ## [Click here to view the web version of this prompt library](https://cyberbara.com/gpt-image-prompt-library?utm_source=gpt-image-banner)
 
+🎨 **[Prompt Generator](prompt-generator.html)** — Enter your idea, get a ready-to-use GPT Image 2 prompt generated via the Cline API.
+
 [<img width="100%" alt="GPT Image Prompt Library Screenshot" src="assets/banner/gpt-image-prompt-library-screenshot.jpg" />](https://cyberbara.com/gpt-image-prompt-library?utm_source=gpt-image-banner)
 
 ## Table of Contents
