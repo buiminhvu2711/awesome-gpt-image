@@ -3,7 +3,7 @@
 Thumbs.db
 
 # Secrets — repo này chỉ chạy local nên .env được commit luôn
-# .env
+.env
 
 # Editor files
 .vscode/
