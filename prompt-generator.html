@@ -37,6 +37,8 @@
   .imgbox { display: flex; flex-direction: column; gap: 8px; }
   .imgbox img { max-width: 100%; border-radius: 12px; border: 1px solid var(--border); }
   a.btn { text-decoration: none; display: inline-block; }
+  .saved-note { font-size: .78rem; color: var(--muted); }
+  .saved-note code { color: var(--accent); }
   .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
   .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
   @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
@@ -136,7 +138,8 @@
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `Lỗi ${res.status}`);
-      imgBox.innerHTML = `<img src="${data.image}" alt="Generated" /><div class="actions"><a class="btn" href="${data.image}" download="gpt-image.png" target="_blank">💾 Tải ảnh</a></div>`;
+      const saveNote = data.saved ? `<div class="saved-note">💾 Đã lưu: <code>${data.saved}</code></div>` : "";
+      imgBox.innerHTML = `<img src="${data.image}" alt="Generated" />${saveNote}<div class="actions"><a class="btn" href="${data.saved || data.image}" download="gpt-image.png" target="_blank">💾 Tải ảnh</a><button class="btn" onclick="navigator.clipboard.writeText('${data.saved || ""}')">📁 Copy đường dẫn</button></div>`;
     } catch (e) {
       imgBox.innerHTML = `<div class="bubble" style="color:#ff8a8a">❌ ${e.message}</div>`;
       btn.disabled = false;

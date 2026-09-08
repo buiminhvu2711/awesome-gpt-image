@@ -1,9 +1,9 @@
 // Optional local proxy for prompt-generator.html
 // Run: CLINE_API_KEY="sk-..." node server.mjs  -> http://localhost:3000/prompt-generator.html
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, extname } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,15 +163,37 @@ const server = createServer(async (req, res) => {
         res.writeHead(502, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: "OpenAI không trả về ảnh." }));
       }
+
+      // Lưu ảnh xuống assets/generated/ trong repo
+      const genDir = join(__dirname, "..", "assets", "generated");
+      mkdirSync(genDir, { recursive: true });
+      const filename = `gpt-image-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      const isUrl = b64.startsWith("http");
+      if (!isUrl) writeFileSync(join(genDir, filename), Buffer.from(b64, "base64"));
+
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
-        image: b64.startsWith("http") ? b64 : `data:image/png;base64,${b64}`,
+        image: isUrl ? b64 : `data:image/png;base64,${b64}`,
+        saved: isUrl ? null : `/assets/generated/${filename}`,
       }));
     } catch (err) {
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Không kết nối được OpenAI API: " + err.message }));
     }
     return;
+  }
+
+  // Phục vụ ảnh đã gen từ assets/generated/
+  if (req.method === "GET" && req.url.startsWith("/assets/generated/")) {
+    const file = join(__dirname, "..", decodeURIComponent(req.url.split("?")[0]));
+    if (existsSync(file) && file.startsWith(join(__dirname, "..", "assets", "generated"))) {
+      const ext = extname(file).toLowerCase();
+      const mime = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" }[ext] || "application/octet-stream";
+      res.writeHead(200, { "Content-Type": mime });
+      return res.end(readFileSync(file));
+    }
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    return res.end("Not found");
   }
 
   res.writeHead(404, { "Content-Type": "text/plain" });
