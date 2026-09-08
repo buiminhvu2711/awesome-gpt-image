@@ -17,6 +17,25 @@ try {
 const PORT = process.env.PORT || 3000;
 const CLINE_API_KEY = process.env.CLINE_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY || "";
+const IMAGE_PROVIDER = process.env.IMAGE_PROVIDER || "pollinations"; // "pollinations" | "openai"
+
+// Lưu ảnh vào assets/generated/ và trả JSON cho browser
+function finishImage(res, imageData, ext) {
+  const isBuffer = imageData instanceof Buffer;
+  let savedPath = null;
+  if (isBuffer) {
+    const genDir = join(__dirname, "..", "assets", "generated");
+    mkdirSync(genDir, { recursive: true });
+    const filename = `gpt-image-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
+    writeFileSync(join(genDir, filename), imageData);
+    savedPath = `/assets/generated/${filename}`;
+  }
+  const image = isBuffer
+    ? `data:image/${ext === "png" ? "png" : "jpeg"};base64,${imageData.toString("base64")}`
+    : imageData;
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ image, saved: savedPath }));
+}
 const MODEL = process.env.CLINE_MODEL || "anthropic/claude-sonnet-4.6";
 
 // Trích các prompt mẫu từ README.md làm few-shot examples cho model
@@ -131,54 +150,65 @@ const server = createServer(async (req, res) => {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Thiếu prompt." }));
     }
-    if (!OPENAI_API_KEY) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "Chưa đặt OPENAI_API_KEY trong .env." }));
+    if (IMAGE_PROVIDER === "openai") {
+      if (!OPENAI_API_KEY) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Chưa đặt OPENAI_API_KEY trong .env." }));
+      }
+      try {
+        const response = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
+            prompt,
+            size: process.env.OPENAI_IMAGE_SIZE || "1024x1024",
+            n: 1,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          res.writeHead(response.status, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({
+            error: data.error?.message || `OpenAI API lỗi ${response.status}`,
+            status: response.status,
+          }));
+        }
+        const b64 = data.data?.[0]?.b64_json || data.data?.[0]?.url || "";
+        if (!b64) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "OpenAI không trả về ảnh." }));
+        }
+        const isUrl = b64.startsWith("http");
+        return finishImage(res, isUrl ? b64 : Buffer.from(b64, "base64"), isUrl ? null : "png");
+      } catch (err) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Không kết nối được OpenAI API: " + err.message }));
+      }
     }
 
+    // Mặc định: Pollinations.ai (miễn phí, không cần key)
     try {
-      const response = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-2",
-          prompt,
-          size: process.env.OPENAI_IMAGE_SIZE || "1024x1024",
-          n: 1,
-        }),
-      });
-      const data = await response.json();
+      const width = process.env.POLLINATIONS_WIDTH || "1024";
+      const height = process.env.POLLINATIONS_HEIGHT || "1024";
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true&model=flux`;
+      const response = await fetch(url);
       if (!response.ok) {
+        const text = await response.text().catch(() => "");
         res.writeHead(response.status, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({
-          error: data.error?.message || `OpenAI API lỗi ${response.status}`,
+          error: `Pollinations API lỗi ${response.status}: ${text.slice(0, 200) || response.statusText}`,
           status: response.status,
         }));
       }
-      const b64 = data.data?.[0]?.b64_json || data.data?.[0]?.url || "";
-      if (!b64) {
-        res.writeHead(502, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "OpenAI không trả về ảnh." }));
-      }
-
-      // Lưu ảnh xuống assets/generated/ trong repo
-      const genDir = join(__dirname, "..", "assets", "generated");
-      mkdirSync(genDir, { recursive: true });
-      const filename = `gpt-image-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
-      const isUrl = b64.startsWith("http");
-      if (!isUrl) writeFileSync(join(genDir, filename), Buffer.from(b64, "base64"));
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        image: isUrl ? b64 : `data:image/png;base64,${b64}`,
-        saved: isUrl ? null : `/assets/generated/${filename}`,
-      }));
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return finishImage(res, buffer, "jpg");
     } catch (err) {
       res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Không kết nối được OpenAI API: " + err.message }));
+      res.end(JSON.stringify({ error: "Không kết nối được Pollinations: " + err.message }));
     }
     return;
   }
