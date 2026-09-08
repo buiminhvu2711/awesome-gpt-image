@@ -18,6 +18,30 @@ const PORT = process.env.PORT || 3000;
 const CLINE_API_KEY = process.env.CLINE_API_KEY || "";
 const MODEL = process.env.CLINE_MODEL || "anthropic/claude-sonnet-4.6";
 
+// Trích các prompt mẫu từ README.md làm few-shot examples cho model
+const MAX_EXAMPLES = 40;
+const MAX_EXAMPLE_CHARS = 30000;
+
+function getReadmeExamples() {
+  try {
+    const readme = readFileSync(join(__dirname, "..", "README.md"), "utf8");
+    const blocks = [...readme.matchAll(/```text\r?\n([\s\S]*?)```/g)]
+      .map((m) => m[1].trim())
+      .filter((t) => t.length > 20 && t.length < 2000);
+    // Chọn đều giữa đầu/giữa/cuối README để đa dạng thể loại
+    const step = Math.max(1, Math.floor(blocks.length / MAX_EXAMPLES));
+    const picked = blocks.filter((_, i) => i % step === 0).slice(0, MAX_EXAMPLES);
+    let out = "";
+    for (const ex of picked) {
+      if (out.length + ex.length > MAX_EXAMPLE_CHARS) break;
+      out += `- ${ex.replace(/\s+/g, " ")}\n`;
+    }
+    return `EXAMPLE PROMPTS FROM THE LIBRARY:\n${out}`;
+  } catch {
+    return "(Không đọc được thư viện prompt mẫu — hãy dựa vào kiến thức riêng về GPT Image 2.)";
+  }
+}
+
 const SYSTEM_PROMPT = `You are an expert prompt engineer for OpenAI's GPT Image 2 image generation model.
 
 The user will describe what image they want (in Vietnamese or any language). Your job is to return ONE final, ready-to-use image prompt in ENGLISH.
@@ -28,6 +52,10 @@ Rules for the prompt you produce:
 - If text appears in the image, put the exact text in double quotes.
 - Match the aesthetic style the user asks for (photorealistic RAW photo, cinematic, illustration, poster design, etc.). For photorealism, mention realistic imperfections and natural lighting.
 - Keep it between 60 and 200 words. Do not add headings, explanations, or anything besides the prompt itself.
+
+Below is a curated collection of real, high-quality GPT Image 2 prompts from a community library. Study their style, level of detail, and techniques — imitate their quality and adapt their techniques (RAW camera quality cues, exact quoted text, style keywords, layout specifications, etc.) to the user's request.
+
+${getReadmeExamples()}
 
 Output format: return ONLY the final prompt text. No preamble, no quotes around the whole thing, no markdown.`;
 
